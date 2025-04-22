@@ -1,0 +1,51 @@
+
+import streamlit as st
+import cv2
+import numpy as np
+from PIL import Image
+import io
+import math
+
+st.set_page_config(page_title="Digital Droplets FSAS", layout="centered")
+st.title("Digital Droplets FSAS")
+st.markdown("### Bloodstain Pattern Analyzer")
+
+uploaded_file = st.file_uploader("Upload a bloodstain image", type=["jpg", "jpeg", "png"])
+
+if uploaded_file:
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    image = cv2.imdecode(file_bytes, 1)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+
+    st.markdown("---")
+    st.markdown("### Detected Bloodstains")
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+    _, thresh = cv2.threshold(blurred, 50, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    result_img = image.copy()
+
+    for cnt in contours:
+        if cv2.contourArea(cnt) > 100:
+            ellipse = None
+            if len(cnt) >= 5:
+                ellipse = cv2.fitEllipse(cnt)
+                cv2.ellipse(result_img, ellipse, (0, 255, 0), 2)
+
+                (x, y), (MA, ma), angle = ellipse
+                ratio = MA / ma if ma != 0 else 0
+                angle_of_impact = round(math.degrees(math.asin(ratio)), 2) if ratio <= 1 else "Invalid"
+
+                cv2.putText(result_img, f"Angle: {angle_of_impact}°", (int(x), int(y)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+    st.image(result_img, caption="Analysis Result", use_column_width=True)
+    
+    st.success("Analysis complete. You can now download or present your results.")
+
+    result_pil = Image.fromarray(cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB))
+    img_bytes = io.BytesIO()
+    result_pil.save(img_bytes, format='PNG')
+    st.download_button("Download Analyzed Image", data=img_bytes.getvalue(), file_name="analyzed_result.png", mime="image/png")
